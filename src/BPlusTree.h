@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -78,12 +79,47 @@ public:
     node->values.insert(node->values.begin() + index, value);
   }
 
-  void recursiveInsert(Node<std::string, std::string> *node,
-                       const std::string &key, const std::string &value) {}
+  std::pair<std::string, Node<std::string, std::string> *>
+  recursiveInsert(Node<std::string, std::string> *node, const std::string &key,
+                  const std::string &value) {
+
+    if (node->isLeaf) {
+      insertSortedOrder(node, key, value);
+      // check if we have to split or not
+      if (node->keys.size() <= treeOrder)
+        return {"", nullptr};
+
+      // have to split a leaf node because the leaf node became too full
+      Node<std::string, std::string> *newNode =
+          new Node<std::string, std::string>(true);
+
+      // moving half the keys from current node to newly split
+      auto keyMidpoint = node->keys.begin() + (node->keys.size() / 2);
+      std::move(keyMidpoint, node->keys.end(),
+                std::back_inserter(newNode->keys));
+      node->keys.erase(keyMidpoint, node->keys.end());
+
+      // moving half the values to newly split node
+      auto valuesMidpoint = node->values.begin() + (node->values.size() / 2);
+      std::move(valuesMidpoint, node->values.end(),
+                std::back_inserter(newNode->values));
+      node->values.erase(valuesMidpoint, node->values.end());
+
+      // updating the pointers
+      newNode->nextLeaf = node->nextLeaf;
+      node->nextLeaf = newNode;
+
+      return {newNode->keys[0], newNode};
+    }
+
+    // non leaf node splitting
+  }
 
   // main 2 functions
   void insert(const std::string &key, const std::string &value) {
     // to handle node splitting and such will use recursion
+    std::pair<std::string, Node<std::string, std::string> *> result =
+        recursiveInsert(root, key, value);
   }
 
   std::optional<std::string> search(const std::string &key) {
