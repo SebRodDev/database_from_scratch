@@ -112,7 +112,57 @@ public:
       return {newNode->keys[0], newNode};
     }
 
-    // non leaf node splitting
+    // now see if we can find the specific key we were looking for
+    auto matchingElement = std::find(node->keys.begin(), node->keys.end(), key);
+
+    // for cases where we did not insert right away on first traversal must
+    // traverse tree to find which one to go to
+    int index = matchingElement - node->keys.begin();
+    auto childRes = recursiveInsert(node->children[index], key, value);
+
+    // in the case that we did not have to split the child node then we're done
+    // and dont have to continue splitting
+    if (childRes.second == nullptr) {
+      return {"", nullptr};
+    }
+
+    node->keys.insert(node->keys.begin() + index, childRes.first);
+    node->children.insert(node->children.begin() + index + 1, childRes.second);
+
+    // now have to check if this internal node has reached capacity if it has
+    // then must split if not can stop
+    if (node->keys.size() <= treeOrder) {
+      return {"", nullptr};
+    }
+
+    // internal node split
+    // non leaf node splitting which means that we mark it as false for being a
+    // leaf node
+    Node<std::string, std::string> *newNode =
+        new Node<std::string, std::string>(false);
+
+    // choosing how we want to split the internal node and since it can only
+    // hold at most treeOrder nodes then this one has to move up
+    int splitPoint = treeOrder / 2;
+
+    // must move up a key to represent this value in the node that is not
+    // promoted up
+    std::string promotedKey = node->keys[splitPoint];
+
+    // move everything to the right of the split point to this new node because
+    // that represents our new split
+    newNode->keys.assign(node->keys.begin() + splitPoint + 1, node->keys.end());
+
+    newNode->children.assign(node->children.begin() + splitPoint + 1,
+                             node->children.end());
+
+    // dont have to copy over the values because this is an internal node values
+    // are not stored in the internal nodes only leaf nodes
+    node->keys.erase(node->keys.begin() + splitPoint, node->keys.end());
+    node->children.erase(node->children.begin() + splitPoint + 1,
+                         node->children.end());
+
+    return {promotedKey, newNode};
   }
 
   // main 2 functions
@@ -120,6 +170,24 @@ public:
     // to handle node splitting and such will use recursion
     std::pair<std::string, Node<std::string, std::string> *> result =
         recursiveInsert(root, key, value);
+
+    // handle return
+    if (result.second != nullptr) {
+      // if we had to split the root because an internal node was split then we
+      // must properly update a new root
+
+      Node<std::string, std::string> *newRoot =
+          new Node<std::string, std::string>(false);
+
+      // the original root is now a child to this new root
+      newRoot->children.push_back(root);
+
+      // add whatever node was just split from the rest and moved upwards
+      newRoot->keys.push_back(result.first);
+      newRoot->children.push_back(result.second);
+
+      root = newRoot;
+    }
   }
 
   std::optional<std::string> search(const std::string &key) {
