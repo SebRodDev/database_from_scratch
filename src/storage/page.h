@@ -1,40 +1,71 @@
 #pragma once
 #include <cstdint>
+#include <type_traits>
 
-// how large we want our pages to be so that we can do paging and write them to disk so our database can persist
-constexpr uint32_t PAGE_SIZE = 4096;
+constexpr uint32_t PAGE_SIZE  = 4096;
+constexpr uint32_t VALUE_SIZE = 56;
 
-// defining an equivalent type just for readability
-using page_id = uint32_t;
+using pageId = uint32_t;
+using KeyType   = int64_t;
+constexpr pageId INVALID_PAGE_ID = 0xFFFFFFFF;
 
-// the invalid id is when its just 32 bits of straight 1s lets us know when we have reached the end of our addressing
-constexpr page_id INVALID_PAGE = 0xFFFFFFFF;
-
-// can help us keep track what each of our pages represent like the type of node
-enum class PageType {
+// want to limit the amount of space that this is taking up
+enum class PageType : uint8_t {
     INVALID,
     LEAF,
     INTERNAL
 };
 
-
-// basic page header
+// padding so that we can get it exactly to the amount of bytes that we want and the compiler does not add padding that we are not explicitly setting
 struct PageHeader {
-    PageType type;
-    uint16_t numKeys;
-    page_id pageId;
-    page_id parentId;
+    PageType  type;
+    uint8_t   _pad0[3];
+    uint16_t  num_keys;
+    uint16_t  _pad1;
+    pageId page_id;
+    pageId parent_id;
 };
+static_assert(sizeof(PageHeader) == 16);
+
+struct Value {
+    char bytes[VALUE_SIZE]; 
+};
+
+// each leaf has a key and a value associated with it
+struct LeafSlot {
+    KeyType key;
+    Value   value;
+};
+static_assert(sizeof(LeafSlot) == 64);
+
+constexpr uint32_t LEAF_HEADER_SIZE = 64;
+constexpr uint32_t LEAF_MAX_SLOTS   = (PAGE_SIZE - LEAF_HEADER_SIZE) / sizeof(LeafSlot);
 
 struct LeafPage {
     PageHeader header;
-    // since leafs always have a pointer to next leaf this just represents that but instead of a pointer its the id of the next node
-    page_id nextLeaf;
-    // remaining space filled up by all the key, value pairs that are normal of a datbase
+    pageId  next_leaf;
+    uint8_t    _reserved[LEAF_HEADER_SIZE - sizeof(PageHeader) - sizeof(pageId)];
+    LeafSlot   slots[LEAF_MAX_SLOTS];
 };
 
+static_assert(sizeof(LeafPage) <= PAGE_SIZE);
+
+// n keys + (n+1) children must fit: n*8 + (n+1)*4 <= PAGE_SIZE - header
+constexpr uint32_t INTERNAL_MAX_KEYS =
+    (PAGE_SIZE - sizeof(PageHeader) - sizeof(pageId)) /
+    (sizeof(KeyType) + sizeof(pageId));
+
+constexpr uint32_t INTERNAL_MAX_CHILDREN = INTERNAL_MAX_KEYS + 1;
+
+// ensuring this can cleanly map to a 4096 (4 KB) buffer
 struct InternalPage {
     PageHeader header;
-    // remaining space filled with the children + keys
+    pageId children[INTERNAL_MAX_CHILDREN];
+    KeyType    keys[INTERNAL_MAX_KEYS];
+    uint8_t    _reserved[PAGE_SIZE - sizeof(PageHeader) 
+                          - INTERNAL_MAX_CHILDREN * sizeof(pageId)
+                          - INTERNAL_MAX_KEYS * sizeof(KeyType)];
 };
+
+static_assert(sizeof(InternalPage) <= PAGE_SIZE);
 
